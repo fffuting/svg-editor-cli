@@ -1,31 +1,50 @@
 # Lab1 Phase 1：SVG 编辑器（CLI）
 
-## 项目信息
+## 项目信息与运行
 
-- Git 仓库地址：https://github.com/fffuting/svg-editor-cli
-- Git 克隆地址：https://github.com/fffuting/svg-editor-cli.git
-- 提交文档路径：`doc/README.md`
-- 技术要求：TypeScript、面向对象、Command 模式、Composite 语义。
-- 当前状态：仓库已创建，本文为实施前的架构方案。尚未提交程序实现、执行测试或创建 `final` 标签，因此本文不是已完成项目的验收报告。
-- 仓库为私有，评阅者需要具备访问权限。
+- Git 仓库：https://github.com/fffuting/svg-editor-cli
+- 克隆地址：https://github.com/fffuting/svg-editor-cli.git
+- 最终交付标签：`final`（最终交付以远程标签指向的提交为准）。
+- 环境：Node.js 22+ 和 npm；本地验证 Node.js 24.22.1、TypeScript 5.9.3。
+- 实现范围：Phase 1 全部 19 个命令、六种内置图形、撤销重做及 SVG 读写。box 属后续插件阶段，按要求返回未知类型错误。
+- 仓库为私有：提交时需确保评阅者能访问；也可同时提交源码 ZIP。本文不代表已向课程平台提交作业。
+
+```sh
+git clone https://github.com/fffuting/svg-editor-cli.git
+cd svg-editor-cli
+git checkout final
+npm ci
+npm run check
+npm run cli
+```
+
+`npm run cli` 启动已编译程序，首次运行前需执行 `npm run build` 或 `npm run check`。提示符为 `svg>`，输入 `help` 查看语法；Ctrl+C 或 EOF 退出。浮点坐标合法，id 大小写敏感。双引号包裹含空格参数，行首 `#` 为注释，颜色参数中的 `#` 不作注释。
+
+PowerShell 示例回放：`Get-Content examples/flowchart.txt -Encoding utf8 | npm run cli`。
+Linux/macOS：`npm run cli < examples/flowchart.txt`。
+生成文件为 `examples/flowchart.svg`，可直接拖入浏览器预览；`examples/other.svg` 用于验证外部文件的缺 id 补全。
+
+![生成的两节点流程图](../examples/flowchart.svg)
 
 ## 架构方案
 
 ### 1. 模块划分
 
-以下目录与类名为计划结构；实现后须按实际代码修订。一类一文件，文件名与类名一致，状态通过私有字段和方法封装。
-
-| 模块 | 计划职责与代表类 |
+| 目录 | 实际职责与代表类 |
 | --- | --- |
-| `src/cli/` | `Repl` 逐行读取命令；`Tokenizer` 处理双引号及行首注释；`CommandDispatcher` 将命令名映射为命令对象；统一输出成功摘要与 `error:` |
-| `src/application/` | `EditorSession` 管理当前文档、路径及历史屏障；`CommandHistory` 管理 undo/redo；协调业务对象与 IO 接口 |
-| `src/application/commands/` | `CreateCommand`、`MoveCommand` 等具体命令；每条编辑命令作为一个撤销单元 |
-| `src/application/ports/` | 定义 `DocumentStore` 等 IO 接口，避免业务直接依赖 Node 文件系统 |
-| `src/domain/` | `SvgDocument` 维护画布、唯一 id 与树结构不变量；`Shape` 及 Rect、Circle、Ellipse、Line、Text、Group 类封装图形操作；`ShapeFactory` 集中创建图形 |
-| `src/infrastructure/` | `SvgDocumentStore` 读写文件；SVG XML 解析与序列化适配，处理文本转义与缺失 id 警告 |
-| `src/bootstrap/` | 组装 CLI、会话、工厂及存储实现，完成依赖注入 |
-| `tests/` | 图形行为、命令历史、SVG 往返、CLI 集成与错误原子性测试 |
-| `doc/` | 架构、迭代记录、自查和质量保证文档 |
+| src/domain | Shape、GeometryShape 与 Rect/Circle/Ellipse/Line/Text/Group；封装几何行为、样式和子树；SvgDocument 负责画布、id 唯一性、父子关系与顺序；ShapeFactory 创建具体类型 |
+| src/application | EditorSession 管理当前文档、文件路径和历史屏障；CommandHistory 管理两栈；Arguments 校验命令参数 |
+| src/application/commands | Command、EditCommand 和 19 个具体命令类，执行不同用例；一条编辑对应一个历史单元 |
+| src/application/ports | DocumentStore 定义读写端口和 ReadResult，应用层不依赖文件系统 |
+| src/cli | Tokenizer、CommandDispatcher、Repl；负责解析、命令分发、逐行输入和结果输出 |
+| src/infrastructure | SvgCodec 适配 XML 库；SvgTransform 处理支持的平移和等比缩放；SvgDocumentStore 负责文件读写 |
+| src/bootstrap | main.ts 仅组装对象并启动 REPL |
+| tests | 领域、命令、SVG、真实子进程 CLI、架构静态检查 |
+| examples | 可回放命令和实际生成的 SVG |
+
+![PlantUML 组件图](architecture.svg)
+
+组件关系的 PlantUML 源码如下：
 
 ```plantuml
 @startuml
@@ -45,101 +64,99 @@ infra --> domain
 @enduml
 ```
 
-### 2. 设计模式的选择
+### 2. 设计模式及落地
 
-**Command（必选）**：计划定义编辑命令抽象，提供执行、撤销和重做能力。调用方只提交命令对象，`CommandHistory` 统一维护历史。命令成功后才入栈；失败必须恢复文档、父子关系、id 索引及历史状态。undo 后成功执行新编辑时清空 redo 栈，失败编辑不清空历史。
+**Command**：所有 CLI 命令继承 Command。编辑命令继承 EditCommand，实现 perform(document)，例如 MoveCommand、GroupCommand。CommandDispatcher 只负责构造与调用，不实现图形编辑算法。
 
-`group`、`ungroup`、`addto`、`delete` 保存原父节点、同级位置和相关子树，以便精确恢复。首版可采用由领域对象生成及恢复的深快照（Memento），同时保存成功执行后的快照以支持重做；代价是内存随文档和历史增长，后续有证据表明需要时再改为局部差量。
+**Memento**：EditorSession.edit 在当前文档的深克隆副本上执行命令，成功后 EditCommand.capture 保存前后快照，再替换当前文档并记录历史。异常直接丢弃副本，历史不变。undo/redo 恢复独立深克隆，整次 group、delete 或 ungroup 只占一个单元。
 
-**Composite**：`Shape` 定义 move、scale 和属性操作契约。叶子类自行处理几何数据，`Group` 持有子节点并递归移动、缩放。容器的公共样式属性设置在容器本身，采用 SVG 继承语义，不强制覆盖子节点显式样式。删除容器同时删除子孙；应用层不根据图形标签反复分派行为。
+**Composite**：Shape 提供 move、scale、set、clone、children、toElement 等统一契约。GeometryShape 封装数值属性，具体图形负责移动坐标及显示。Group 持有私有子节点数组，移动和缩放递归调用子节点；SvgDocument 删除任意节点时整体移除其子树。调用方不按标签反复分派行为。
 
-**工厂与依赖倒置**：`ShapeFactory` 是图形类型名到类的唯一分派点；命令名分派仅位于 `CommandDispatcher`。两处均记录为后续注册式扩展的待重构点。XML 读取复用同一图形创建入口；写出与展示通过多态协作，避免散落 `switch(tag)`。
+**工厂与依赖倒置**：ShapeFactory 集中六种类型的创建规则，CLI 创建与 SVG 读入复用同一工厂；DocumentStore 是应用层端口，SvgDocumentStore 是具体适配器，由 bootstrap 注入。
 
-以上为计划落地方式，尚无源码可供证明。
+按名字分派只集中在两处：CommandDispatcher 的命令映射和 ShapeFactory 的图形定义映射。两处标记为后续插件阶段的待重构点，届时改为提供者注册；本阶段不添加插件装载器。
 
 ### 3. 依赖方向规则
 
-- `domain` 不依赖 CLI、应用服务、文件系统和第三方 XML 解析库，保持图形规则可独立测试。
-- `application` 可以依赖 `domain` 和自身的 ports，不依赖具体存储实现。
-- `cli` 只调用应用层，不直接修改图形集合、文件或历史栈。
-- `infrastructure` 可以依赖领域对象和应用层 ports，实现存储接口；不得调用 CLI。
-- `bootstrap` 可以依赖各模块，负责组装对象，不承载编辑规则。
-- `tests` 可依赖被测模块，生产代码不得反向依赖测试。
+- domain 只依赖 domain，不导入文件系统、XML 库或应用服务。
+- application 依赖 domain 和自身 ports，不依赖 infrastructure 或 cli。
+- cli 依赖 application 及自身模块；终端 IO 属于界面层，图形状态修改必须经应用层。
+- infrastructure 依赖 domain 与 application/ports，实现具体读写，不依赖 cli。
+- bootstrap 负责组装，可依赖各模块，不承载业务规则。
+- tests 可导入被测模块，生产代码不得反向依赖测试。
 
-违反上述规则的 import 必须记录为待处理项，并在最终提交前修复或说明经过评估的方案修订。
+`tests/architecture.test.ts` 遍历源文件 AST，检查静态 import 方向、每文件最多一个同名类、字段可见性、无显式 any、无 switch、无顶层过程式函数。该检查不能证明所有运行时关系，仍需代码审阅。
 
 ### 4. 变化点假设
 
-| 可能变化 | 预留方式或不预留的理由 |
+| 变化点 | 当前安排与取舍 |
 | --- | --- |
-| 新增编辑命令 | 命令对象与历史管理分离；新增命令不修改历史算法 |
-| 新增图形、后续 box 插件 | 统一 Shape/Group 契约和集中工厂；本阶段不实现插件装载器，避免扩大范围 |
-| CLI 改为 GUI 或 agent 调用 | 输入解析、输出格式与应用服务分离，复用会话和命令 |
-| 存储位置或 XML 库替换 | 通过 DocumentStore 接口隔离；领域不依赖解析器节点 |
-| 大文档与长撤销历史 | 首版使用快照，性能测量后再引入局部差量和历史上限 |
+| 新增编辑命令 | 新建命令子类并登记映射；无需更改历史算法 |
+| 新增图形和 box | 统一 Shape/Group 契约与工厂；插件注册、复合类型标记还原留到后续阶段 |
+| GUI 或 agent 输入 | 复用应用层会话及命令，替换 CLI 适配层 |
+| 更换存储或 XML 库 | DocumentStore 端口及 SvgCodec 隔离具体实现 |
+| 大文档与长历史 | 当前快照方案空间复杂度约 O(历史条数×节点数)，查找采用树遍历；不提前引入索引同步和差量恢复复杂度 |
 
-### 5. 关键行为约束
+### 5. 行为决策与边界
 
-- 内置 rect、circle、ellipse、line、text、g 六种类型；`box` 属后续阶段，本阶段返回未知类型错误。
-- 所有图形及容器的 id 唯一且大小写敏感。外部文件缺 id 时先收集已有 id，再分配不冲突的“标签名+序号”，并打印警告。
-- `create ... in <containerId>` 直接指定父容器；group 收编已有节点，addto 将已有节点追加到目标容器。
-- scale 仅接受正数，位置与尺寸同时缩放；Group 对子孙递归操作，不能只缩放宽高。
-- group 拒绝同时收编祖先与后代；addto 拒绝形成环；ungroup 拒绝根级容器，其他容器解散后子节点占据其原位置。
-- front/back 仅调整同级顺序，按 SVG 后绘制覆盖先绘制的规则处理。
-- set 仅接受要求中的公共样式、各类几何属性和 text 内容，禁止通过 set 修改 id 或任意属性。
-- init、read、save、修改画布尺寸成功后形成历史屏障，undo/redo 报 `error: undo not allowed after io command`；下一条成功编辑重新开启历史，不能跨越屏障撤销。
-- tree、show、help 以及查询画布尺寸不进入历史；失败命令不改变任何状态。
-- 读入先解析和验证临时文档，成功后再替换会话。写入失败不改变当前文档或历史状态。
+- create 支持尾部 `in <containerId>`；group 保持文档先序顺序，不按参数排列重排节点。
+- 跨父容器 group 放入最低共同祖先，在首个被选节点所属分支前插入新容器；同父情况占据首个被选节点位置。原空容器保留。该细节是需求未明确处的确定性选择，已有测试。
+- ungroup 拒绝 SVG 直接子容器，其他容器的子节点提升到原容器位置。addto 追加至目标末尾，并拒绝形成环。
+- front 移到同级数组末尾（最后绘制），back 移到开头。容器 set 样式采用 SVG 继承，不覆盖子节点显式样式。
+- scale 同时缩放位置和尺寸；拒绝零、负数、非有限值。宽高和半径不得为负。
+- init/read/save/canvas 修改成功后清空两栈并设历史屏障；下一条成功编辑解除屏障。查询 canvas、tree/show/help 不影响历史。
+- help 可在没有文档时查看，其余需文档的操作统一返回 no document 错误。错误前缀为 error:，失败不改变会话状态。
+- read 先完整解析临时文档再替换会话。先收集全部显式 id，再补“标签名+序号”，避免与后面的显式 id 冲突，并逐项警告。
+- save 无参数使用最近成功 read/save 路径。写入同目录临时文件后原子重命名；失败不改变当前路径和历史。
+- XML 使用解析器和序列化器处理文本转义，不用正则拼接 XML。拒绝 DTD、实体声明、未知图形、非法属性和无法支持的变换，避免静默损坏。
+- 支持范围是六类图形及要求中的几何/样式；保留部分常见文字与外观属性。不实现任意 SVG 的 CSS、path、滤镜、渐变、旋转、非等比变换等完整浏览器能力。导入 translate/正等比 scale 转为几何坐标；它不是完整的 SVG 视觉变换引擎（字形及描边缩放不作完整模拟）。
 
 ## 过程记录
 
-### 本次实际发生的讨论与修订
+所有记录来自本次实际实施，未补造历史。
 
-1. 阅读 `phase_cli_1 (1).md`，提取四项必需文档内容，确认 Command 为强制要求、box 不在本阶段范围内。
-2. 初次处理时要求提供已有仓库；用户明确提出由助手创建仓库，随后完成 GitHub 登录。
-3. 在账号 fffuting 下创建私有仓库 svg-editor-cli，依据创建结果页核实仓库克隆地址。
-4. 由于没有已有源码和测试结果，文档将类名、目录、设计模式落地方式标为计划，避免将设计描述冒充实现证据。
+| 阶段/提交 | 实际工作、问题与处理 |
+| --- | --- |
+| 4f97944 | 创建私有仓库，提交初始架构方案，明确当时尚无代码和测试 |
+| 302b410 | 实现六类图形、树结构和领域测试；补上严格 TypeScript 的 Node 类型配置 |
+| 9cbde5f | 实现 Command、快照和历史屏障；测试失败编辑及 IO 不清空 redo、容器溢出不泄漏部分修改 |
+| a16b2c7 | 接入 XML、文件 IO、REPL 和真实 CLI 集成；发现沙箱系统临时目录不支持 rename，将测试隔离目录放到工作目录，保留正式原子保存实现 |
+| 验收迭代 | 修正流程图测试误写的节点数：需求示例实际为 8 个节点；补齐逐命令撤销、错误文本、属性白名单和跨父分组测试 |
+| 工具链修订 | 新版 TypeScript 7 不再提供原 AST API，固定为 5.9.3；Node 类型固定 22 系列，以便架构测试和 Node 22+ 环境复现 |
+| 最终文档 | 统一格式，记录 43 项测试结果；把初始“计划实现”文档更新为真实实现说明，保留已知边界 |
 
-### 后续开发记录要求
-
-每次关键迭代记录：发现的问题、最小复现或需求依据、选择的修正方案、实际修改文件、验证结果及对应 commit。当前尚无代码迭代记录，不编造 AI 生成代码的缺陷、测试通过率或提交历史。
+未采用的复杂方案：先做动态插件系统、用局部差量替换深快照、维护多份可变 id/父节点索引。当前规模下这些方案增加一致性风险，Phase 1 无必要。
 
 ## 一致性自查
 
-| 自查问题 | 当前结论 | 实现后的检查方法 |
-| --- | --- | --- |
-| 实际模块与方案一致吗？ | 未实现，无法判定 | 对照实际 src 目录与上方模块表，记录新增、合并、迁移模块及原因 |
-| 是否违反依赖方向？ | 未实现，尚未检查 import | 检查所有跨模块 import；重点抽查 MoveCommand、CommandHistory、SvgDocumentStore、Repl |
-| 是否采用面向对象与一类一文件？ | 待验证 | 检查私有字段、行为封装、多态及类名与文件名对应关系 |
-| 是否只有两处按名字分派？ | 待验证 | 检查命令分派、图形工厂及 XML 读写/展示路径是否存在重复标签分派 |
-| 文档与实现不一致是否有修订记录？ | 尚无实现修订 | 每次方案调整更新本节、依赖图和过程记录 |
+| 检查项 | 实际结论与证据 |
+| --- | --- |
+| 模块划分是否一致 | 核心目录与初始方案一致；增加 GeometryShape、Numbers、Arguments、Token/SvgElement DTO、SvgTransform 以分离共性行为与边界适配 |
+| 依赖方向是否被违反 | 全部静态 import 自动检查通过，未发现违反规则；领域不依赖 Node/XML 库 |
+| Command 是否真实落地 | 所有编辑命令均为 EditCommand 子类；全部编辑命令有完整文档前后快照 undo/redo 比较测试 |
+| 面向对象规范 | 源码一类一文件、同名、字段封装、无 any、无 switch、无顶层过程式函数检查通过；bootstrap 是对象组装入口 |
+| 两处名字分派 | 命令和图形工厂集中映射；移动、缩放、展示和写出依赖多态 |
+| 修订是否记录 | 上文过程记录说明工具链、测试目录、节点计数和新增辅助类的修订 |
 
 ## 质量保证手段
 
-以下为验收计划，尚未执行，不能据此声称代码完整或测试通过。
+2026-10-30 在 Windows / Node.js 24.22.1 上运行 `npm run check`：类型检查通过、Prettier 格式检查通过、构建通过、**43 项测试全部通过，0 失败、0 跳过**。测试原始输出见 [verification.txt](verification.txt)。格式检查不是完整的语义 lint；类型检查、架构测试和功能测试共同提供证据。
 
-| 验证范围 | 必须覆盖的用例 |
+| 测试文件 | 验证内容 |
 | --- | --- |
-| 文档操作 | 默认 800×600、指定尺寸、read/save、无路径 save、画布查询与修改、未初始化错误 |
-| 六类图形 | 创建、浮点坐标、默认样式、带空格与中文文本、合法及非法属性 |
-| 树结构 | 多层 in、跨父节点 group、ungroup 位置恢复、addto、容器删除、同级 z-order |
-| 几何行为 | 叶子及容器 move/scale，位置和尺寸同时缩放，非正 factor 拒绝 |
-| 历史 | 每条编辑一个单元、复合操作一次撤销、redo 分支清空、IO 屏障、查询不污染历史 |
-| 错误原子性 | 重复/缺失 id、非法父容器、形成环、祖先后代同组、文件错误；比较操作前后文档与历史 |
-| SVG 往返 | save→read 保持尺寸、层次、顺序、id、几何、样式与文本；XML 转义及缺 id 警告 |
-| CLI 集成 | 回放需求中的基础会话和两节点流程图版本 A；检查提示符、注释、错误前缀和摘要 |
-| 架构质量 | TypeScript 类型检查、依赖方向、一类一文件、领域状态封装及分派点审查 |
-| 浏览器预览 | 打开实际保存的 SVG，确认节点、文字与连线可正常渲染 |
+| domain.test.ts | 六类图形多态、克隆、嵌套变换、顺序、祖先冲突和非法属性 |
+| commands.test.ts | 全部编辑命令逐一 undo/redo、IO 屏障、失败原子性、精确错误、参数、白名单、大小写及跨父分组 |
+| svg.test.ts | 六类与文本/样式/viewBox 往返、缺 id、重复 id、非法 XML、未知类型、DTD 拒绝和文件失败 |
+| cli.test.ts | 启动实际 Node 子进程，回放两节点流程图，验证错误后继续运行和最终 SVG |
+| architecture.test.ts | 静态依赖、类文件命名、字段封装和禁止的语法模式 |
 
-实现后在 package.json 中配置并实际运行构建、类型检查和测试脚本，在此补充命令、日期、运行环境、通过/失败数量、失败处理和提交哈希。当前没有 package.json，因此不提供未经验证的安装或运行命令。
+另已实际回放 examples/flowchart.txt，保存 8 节点 SVG。测试并不意味着支持所有 SVG 标准特性；支持范围见上文。
 
-## 最终提交核对
+## 提交检查
 
-- [x] 已建立 GitHub 仓库并在本文填写地址。
-- [x] 本文包含架构方案、PlantUML 图、过程记录、一致性自查与质量保证计划。
-- [ ] 按阶段实现并提交源代码，真实保留开发过程，禁止伪造历史或一次性大提交。
-- [ ] 执行测试、修复问题并将本文更新为实际实现说明。
-- [ ] 确保评阅者能够访问私有仓库。
-- [ ] 在最终通过验收的提交上创建并推送 `final` 标签，确认早于课程截止时间。
+- 源码、依赖锁文件、测试、示例与本说明均纳入 Git。
+- 分阶段提交保留真实开发过程；最终版本通过 `final` 标签定位。
+- 从源码包复现：解压后 `npm ci`、`npm run check`、`npm run cli`。
+- 用户给出的截止日期为 2026-10-31；标签在 2026-10-30 创建，最终以远程 Git 标签时间为准。
+- 提交者须保证评阅者可访问私有仓库，并按课程平台要求提交链接或源码包。
 
-课程截止时间尚未提供；当前不创建 final 标签，以免把仅含方案文档的状态误标为完成版本。

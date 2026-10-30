@@ -1,0 +1,63 @@
+npm notice run svg-editor-cli@1.0.0 check
+npm notice run npm run typecheck && npm run lint && npm test
+npm notice run svg-editor-cli@1.0.0 typecheck
+npm notice run tsc --noEmit
+npm notice run svg-editor-cli@1.0.0 lint
+npm notice run prettier --check "src/**/*.ts" "tests/**/*.ts"
+Checking formatting...
+All matched files use Prettier code style!
+npm notice run svg-editor-cli@1.0.0 test
+npm notice run npm run build && node --test dist/tests/*.test.js
+npm notice run svg-editor-cli@1.0.0 build
+npm notice run tsc
+✔ all source imports follow the documented dependency direction (62.9422ms)
+✔ one named class per file, encapsulated state and no any or tag switches (28.1531ms)
+✔ real CLI executes the two-node flowchart and continues after an error (203.0334ms)
+✔ tokenizer handles comments, hex colors, quoted text and paths (2.3088ms)
+✔ no-document error and help available before initialization (0.5445ms)
+✔ each edit is one history unit; new successful edit clears redo (2.1429ms)
+✔ all document barriers and queries obey undo rules (0.9244ms)
+✔ failed edits and IO preserve document and redo stack (1.1539ms)
+✔ group/delete/ungroup restore entire hierarchy and order (2.6546ms)
+✔ overflow midway through recursive edit never leaks partial mutation (0.908ms)
+✔ all edit commands can undo and redo exact complete documents (8.5204ms)
+✔ exact error: create g scene (0.5274ms)
+✔ exact error: move missing 1 2 (0.3132ms)
+✔ exact error: create g child in missing (0.2018ms)
+✔ exact error: create g child in a (0.1973ms)
+✔ exact error: create hexagon h (0.1137ms)
+✔ exact error: ungroup scene (0.176ms)
+✔ exact error: group bad scene a (0.1734ms)
+✔ exact error: scale a -2 (0.1499ms)
+✔ exact error: set a label x (0.1089ms)
+✔ exact error: addto scene scene (0.138ms)
+✔ cross-parent grouping uses lowest common ancestor and document order (0.5902ms)
+✔ all type-specific set attributes and case-sensitive ids (3.5327ms)
+✔ invalid arity, quoted keyword and blank commands preserve state (0.811ms)
+✔ six polymorphic shapes move, scale and clone without type dispatch (3.502ms)
+✔ groups support nested geometry and independent snapshots (2.7429ms)
+✔ group preserves document order, rejects ancestor selection and cycles (0.8966ms)
+✔ validation rejects duplicate ids, invalid geometry and attributes (0.3683ms)
+✔ SVG round-trip preserves all six types, order, text, styles and viewBox (8.6386ms)
+✔ missing ids reserve all explicit ids first, including later and nested nodes (0.6216ms)
+✔ nested translate/uniform scale imports follow SVG transform order (1.2562ms)
+✔ rejects duplicate id (0.5918ms)
+✔ rejects malformed XML (0.3374ms)
+✔ rejects unknown shape (0.2098ms)
+✔ rejects unsafe entity (0.1148ms)
+✔ rejects unknown attribute (0.3649ms)
+✔ rejects negative radius (0.3234ms)
+✔ rejects non-container child (0.3429ms)
+✔ rejects unsupported transform (0.2006ms)
+✔ rejects anisotropic transform (0.1404ms)
+✔ rejects invalid viewBox (0.1282ms)
+✔ filesystem saves atomically, tracks path and preserves history on failure (22.501ms)
+✔ omitted styles remain omitted and do not receive fabricated defaults (1.3134ms)
+ℹ tests 43
+ℹ suites 0
+ℹ pass 43
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 475.974

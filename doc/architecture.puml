@@ -1,0 +1,15 @@
+@startuml
+skinparam componentStyle rectangle
+package "bootstrap" as boot
+package "cli" as cli
+package "application (commands, history, ports)" as app
+package "domain (document, shapes, factory)" as domain
+package "infrastructure (SVG / file IO)" as infra
+boot --> cli
+boot --> app
+boot --> infra
+cli --> app
+app --> domain
+infra --> app : implements ports
+infra --> domain
+@enduml
