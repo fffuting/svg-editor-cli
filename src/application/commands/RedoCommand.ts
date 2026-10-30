@@ -1,5 +1,8 @@
-import { Command } from './Command.js';
-import type { EditorSession } from '../EditorSession.js';
+import { Command } from "./Command.js";
+import type { EditorSession } from "../EditorSession.js";
 export class RedoCommand extends Command {
-  override execute(session: EditorSession): readonly string[] { this.args.expect(0); return session.redo(); }
+  override execute(session: EditorSession): readonly string[] {
+    this.args.expect(0);
+    return session.redo();
+  }
 }

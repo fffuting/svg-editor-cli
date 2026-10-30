@@ -1,9 +1,10 @@
-import { Command } from './Command.js';
-import type { EditorSession } from '../EditorSession.js';
+import { Command } from "./Command.js";
+import type { EditorSession } from "../EditorSession.js";
 export class HelpCommand extends Command {
   override execute(_session: EditorSession): readonly string[] {
     this.args.expect(0);
-    return [`init [w] [h]                 新建画布（默认 800×600）
+    return [
+      `init [w] [h]                 新建画布（默认 800×600）
 read <file.svg>               读入 SVG
 save [file.svg]               保存 SVG
 canvas [w h]                 查询或修改画布
@@ -24,6 +25,7 @@ front <id> / back <id>        同级绘制顺序（front 最后绘制）
 tree [id] / show <id>         查看结构或属性
 undo / redo                   撤销或重做一条编辑
 help                          查看帮助
-# 开头的行是注释；带空格参数用双引号；EOF 退出。`];
+# 开头的行是注释；带空格参数用双引号；EOF 退出。`,
+    ];
   }
 }
